@@ -224,9 +224,7 @@
 
 <div id="splash"><div class="loader-box">TSS</div></div>
 
-<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
   // Splash screen logic
@@ -252,64 +250,55 @@
     };
   });
 
-  // --- FIREBASE STATS LOGIC ---
-  const firebaseConfig = {
-    apiKey: "AIzaSyCws2eOt3muKCpjHIxB3vUlOHGA06xLhtc",
-    authDomain: "time-shop-save.firebaseapp.com",
-    projectId: "time-shop-save",
-    storageBucket: "time-shop-save.firebasestorage.app",
-    messagingSenderId: "1037284454386",
-    appId: "1:1037284454386:web:a863e690cc63049e1cc56b"
-  };
+  // --- SUPABASE CONFIG ---
+  // REPLACE THESE WITH YOUR SUPABASE CREDENTIALS
+  const SUPABASE_URL = 'https://pwzdggunxvapaowvbkjy.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_cRIFeKSI2eCXE8b8Bw_Y2Q_vG2oNJ7V';
   
-  try {
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Fetch live stats from Firestore
-    async function loadStats() {
-      try {
-        // 1. Count Customers
-        const usersSnap = await db.collection('users').where('role', '==', 'customer').get();
-        const userCount = usersSnap.size;
-        document.getElementById('users').textContent = userCount + '+';
+  // Fetch live stats from Supabase
+  async function loadStats() {
+    try {
+      // 1. Count Customers
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'customer');
+      
+      const userCount = usersError ? 0 : (usersData?.length || 0);
+      // Note: For exact count use: const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer');
+      document.getElementById('users').textContent = userCount + '+';
 
-        // 2. Count Shops (check both 'shopkeepers' collection or 'users' with role 'shop')
-        let shopCount = 0;
-        const shopSnap1 = await db.collection('shopkeepers').get();
-        shopCount += shopSnap1.size;
-        
-        // If shopkeepers are stored in users collection instead:
-        if (shopCount === 0) {
-           const shopSnap2 = await db.collection('users').where('role', '==', 'shop').get();
-           shopCount = shopSnap2.size;
-        }
-        document.getElementById('shops').textContent = shopCount + '+';
+      // 2. Count Shops
+      const { data: shopData, error: shopError } = await supabase
+        .from('shopkeepers')
+        .select('id', { count: 'exact', head: true });
+      
+      const shopCount = shopError ? 0 : (shopData?.length || 0);
+      document.getElementById('shops').textContent = shopCount + '+';
 
-        // 3. Estimate Minutes Saved (e.g. 1 order = 30 mins saved)
-        const ordersSnap = await db.collection('orders').get();
-        const ordersCount = ordersSnap.size;
-        const minutes = ordersCount * 30; // Estimated 30 mins saved per order
-        
-        // Format large numbers (e.g. 1.2k)
-        let displayMinutes = minutes;
-        if(minutes > 1000) displayMinutes = (minutes / 1000).toFixed(1) + 'k';
-        document.getElementById('saves').textContent = displayMinutes + '+';
+      // 3. Estimate Minutes Saved
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true });
+      
+      const ordersCount = ordersError ? 0 : (ordersData?.length || 0);
+      const minutes = ordersCount * 30;
+      
+      let displayMinutes = minutes;
+      if(minutes > 1000) displayMinutes = (minutes / 1000).toFixed(1) + 'k';
+      document.getElementById('saves').textContent = displayMinutes + '+';
 
-      } catch(e) {
-        console.warn("Could not load stats from cloud", e);
-        // Fallback or leave as "..."
-        document.getElementById('users').textContent = '0+';
-        document.getElementById('shops').textContent = '0+';
-        document.getElementById('saves').textContent = '0+';
-      }
+    } catch(e) {
+      console.warn("Could not load stats from Supabase", e);
+      document.getElementById('users').textContent = '0+';
+      document.getElementById('shops').textContent = '0+';
+      document.getElementById('saves').textContent = '0+';
     }
-
-    loadStats();
-
-  } catch(e) {
-    console.error("Firebase init failed on index", e);
   }
+
+  loadStats();
 </script>
 </body>
 </html>

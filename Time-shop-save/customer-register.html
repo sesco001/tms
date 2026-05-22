@@ -42,30 +42,15 @@ button { background:var(--accent); color:#071126; font-weight:700; padding:12px;
   </form>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCws2eOt3muKCpjHIxB3vUlOHGA06xLhtc",
-  authDomain: "time-shop-save.firebaseapp.com",
-  projectId: "time-shop-save",
-  storageBucket: "time-shop-save.firebasestorage.app",
-  messagingSenderId: "1037284454386",
-  appId: "1:1037284454386:web:a863e690cc63049e1cc56b"
-};
+// --- SUPABASE CONFIG ---
+// REPLACE THESE WITH YOUR SUPABASE CREDENTIALS
+const SUPABASE_URL = 'https://pwzdggunxvapaowvbkjy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cRIFeKSI2eCXE8b8Bw_Y2Q_vG2oNJ7V';
 
-let firebaseAvailable = false;
-try {
-  if (typeof firebase !== 'undefined') {
-    firebase.initializeApp(firebaseConfig);
-    firebaseAvailable = !!firebase.auth();
-  }
-} catch (e) {
-  console.warn('Firebase init skipped or failed:', e);
-  firebaseAvailable = false;
-}
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // local registration helper
 function saveLocalUser({ name, email, phone, password }) {
@@ -119,43 +104,50 @@ form.addEventListener("submit", async e => {
   btn.textContent = "Creating Account...";
   btn.disabled = true;
 
-  // Firebase Cloud Registration
-  if (firebaseAvailable) {
-    try {
-      const auth = firebase.auth();
-      const db = firebase.firestore();
-      
-      const cred = await auth.createUserWithEmailAndPassword(email, password);
-      const uid = cred.user.uid;
-      
-      await db.collection("users").doc(uid).set({
+  // Supabase Cloud Registration
+  try {
+    // 1. Create auth user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: email,
+      password: password
+    });
+    
+    if (authError) throw authError;
+    const userId = authData.user.id;
+    
+    // 2. Save user profile to database
+    const { error: dbError } = await supabase
+      .from('users')
+      .insert([{
+        id: userId,
         name: name,
         email: email,
         phone: phone,
-        role: "customer",
+        role: 'customer',
         dateRegistered: new Date().toISOString()
-      });
-      
-      // Save local session for immediate speed
-      localStorage.setItem('rememberUser', email);
-      localStorage.setItem('tss_last_login', email);
-      
-      showSuccess("Registration successful! Redirecting to Explore...");
-      
-      // FIXED: Redirect to Explore
-      setTimeout(() => window.location.href = "explore.html", 1500);
-      return;
+      }]);
+    
+    if (dbError) throw dbError;
+    
+    // Save local session for immediate speed
+    localStorage.setItem('rememberUser', email);
+    localStorage.setItem('tss_last_login', email);
+    
+    showSuccess("Registration successful! Redirecting to Explore...");
+    
+    // Redirect to Explore
+    setTimeout(() => window.location.href = "explore.html", 1500);
+    return;
 
-    } catch (err) {
-      console.warn('Firebase registration failed:', err);
-      if (err.code === "auth/email-already-in-use") {
-        showError("This email is already registered. Try logging in.");
-        btn.textContent = "Create Account";
-        btn.disabled = false;
-        return;
-      }
-      // If error is network related, fall through to local
+  } catch (err) {
+    console.warn('Supabase registration failed:', err);
+    if (err.message.includes("already be registered")) {
+      showError("This email is already registered. Try logging in.");
+      btn.textContent = "Create Account";
+      btn.disabled = false;
+      return;
     }
+    // If error is network related, fall through to local
   }
 
   // Local fallback (Only if cloud fails)
@@ -169,7 +161,7 @@ form.addEventListener("submit", async e => {
     saveLocalUser({ name, email, phone, password });
     showSuccess("Registration successful (local mode)! Redirecting...");
     
-    // FIXED: Redirect to Explore
+    // Redirect to Explore
     setTimeout(() => window.location.href = "explore.html", 1000);
   } catch (err) {
     console.error(err);

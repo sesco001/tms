@@ -61,22 +61,15 @@
   </form>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCws2eOt3muKCpjHIxB3vUlOHGA06xLhtc",
-  authDomain: "time-shop-save.firebaseapp.com",
-  projectId: "time-shop-save",
-  storageBucket: "time-shop-save.firebasestorage.app",
-  messagingSenderId: "1037284454386",
-  appId: "1:1037284454386:web:a863e690cc63049e1cc56b"
-};
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+// --- SUPABASE CONFIG ---
+// REPLACE THESE WITH YOUR SUPABASE CREDENTIALS
+const SUPABASE_URL = 'https://pwzdggunxvapaowvbkjy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cRIFeKSI2eCXE8b8Bw_Y2Q_vG2oNJ7V';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 document.getElementById('registerForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -97,18 +90,30 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
   btn.disabled = true;
 
   try {
-    const cred = await auth.createUserWithEmailAndPassword(email, password);
-    
-    // Save to Firestore 'shopkeepers' collection
-    await db.collection('shopkeepers').doc(cred.user.uid).set({
-      name: name,
+    // 1. Create auth user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email: email,
-      shopName: shopName,
-      category: category,
-      role: 'shop',
-      status: 'Active', // Default to active so they appear on Explore immediately
-      createdAt: new Date().toISOString()
+      password: password
     });
+    
+    if (authError) throw authError;
+    const userId = authData.user.id;
+    
+    // 2. Save to Supabase 'shopkeepers' table
+    const { error: dbError } = await supabase
+      .from('shopkeepers')
+      .insert([{
+        id: userId,
+        name: name,
+        email: email,
+        shopName: shopName,
+        category: category,
+        role: 'shop',
+        status: 'Active',
+        createdAt: new Date().toISOString()
+      }]);
+    
+    if (dbError) throw dbError;
 
     // Set local storage for immediate dashboard access
     localStorage.setItem('rememberUser', email);

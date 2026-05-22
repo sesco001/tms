@@ -50,21 +50,13 @@
   <a href="profile.html">Profile</a>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCws2eOt3muKCpjHIxB3vUlOHGA06xLhtc",
-  authDomain: "time-shop-save.firebaseapp.com",
-  projectId: "time-shop-save",
-  storageBucket: "time-shop-save.firebasestorage.app",
-  messagingSenderId: "1037284454386",
-  appId: "1:1037284454386:web:a863e690cc63049e1cc56b"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const SUPABASE_URL = 'https://pwzdggunxvapaowvbkjy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cRIFeKSI2eCXE8b8Bw_Y2Q_vG2oNJ7V';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Get shop name from URL or local storage
 const params = new URLSearchParams(window.location.search);
@@ -90,21 +82,22 @@ if(targetShopName){
 async function loadShopProducts(shopName){
   const list = document.getElementById('productList');
   
-  // Query Cloud Firestore
+  // Query Supabase products table
   try {
-    const q = db.collection("products").where("shopName", "==", shopName);
-    const snapshot = await q.get();
+    const { data: products, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('shopName', shopName);
 
     list.innerHTML = '';
-    if(snapshot.empty){
+    if(!products || products.length === 0){
       list.innerHTML = '<div class="no-products">No products found in this shop.</div>';
       return;
     }
 
     const cart = JSON.parse(localStorage.getItem('cart_' + shopName) || '[]');
 
-    snapshot.forEach(doc => {
-      const p = doc.data();
+    products.forEach(p => {
       // Check if in cart
       const inCart = cart.find(x => x.name === p.name);
       const qty = inCart ? inCart.qty : 0;

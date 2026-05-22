@@ -35,22 +35,15 @@ button{background:var(--accent);color:#071126;font-weight:700;padding:12px;borde
   </form>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCws2eOt3muKCpjHIxB3vUlOHGA06xLhtc",
-  authDomain: "time-shop-save.firebaseapp.com",
-  projectId: "time-shop-save",
-  storageBucket: "time-shop-save.firebasestorage.app",
-  messagingSenderId: "1037284454386",
-  appId: "1:1037284454386:web:a863e690cc63049e1cc56b"
-};
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+// --- SUPABASE CONFIG ---
+// REPLACE THESE WITH YOUR SUPABASE CREDENTIALS
+const SUPABASE_URL = 'https://pwzdggunxvapaowvbkjy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cRIFeKSI2eCXE8b8Bw_Y2Q_vG2oNJ7V';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const loginForm = document.getElementById("loginForm");
 const loginMsg = document.getElementById("loginMsg");
@@ -72,28 +65,48 @@ loginForm.addEventListener("submit", async e => {
   loginBtn.disabled = true;
 
   try {
-    // 1. Sign in with Firebase
-    const cred = await auth.signInWithEmailAndPassword(email, password);
-    
-    // 2. Check if user profile exists in 'shopkeepers' or 'users'
-    let doc = await db.collection("shopkeepers").doc(cred.user.uid).get();
-    if (!doc.exists) doc = await db.collection("users").doc(cred.user.uid).get();
+    // 1. Sign in with Supabase
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password
+    });
 
-    if (doc.exists) {
+    if (error) throw error;
+    
+    // 2. Get user profile from database
+    let { data: shopkeeperData, error: skError } = await supabase
+      .from('shopkeepers')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+    
+    // If not found in shopkeepers, try users table
+    if (!shopkeeperData || skError) {
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+      
+      if (userData && !userError) {
+        shopkeeperData = userData;
+      }
+    }
+
+    if (shopkeeperData) {
       // 3. Save user data to LocalStorage for the dashboard to use immediately
-      const userData = doc.data();
-      localStorage.setItem("user:" + email, JSON.stringify(userData));
+      localStorage.setItem("user:" + email, JSON.stringify(shopkeeperData));
       localStorage.setItem("rememberUser", email);
       
       // 4. Redirect
       window.location.href = "shopkeeper.html";
     } else {
       showError("Profile not found. Please register.");
-      auth.signOut();
+      supabase.auth.signOut();
     }
   } catch (err) {
     console.error(err);
-    if (err.code === "auth/invalid-credential" || err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
+    if (err.message.includes("Invalid login credentials")) {
       showError("Invalid email or password.");
     } else {
       showError("Login failed: " + err.message);

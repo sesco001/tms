@@ -68,23 +68,14 @@
   <a href="profile.html">Profile</a>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
-// --- 1. FIREBASE CONFIG ---
-const firebaseConfig = {
-  apiKey: "AIzaSyCws2eOt3muKCpjHIxB3vUlOHGA06xLhtc",
-  authDomain: "time-shop-save.firebaseapp.com",
-  projectId: "time-shop-save",
-  storageBucket: "time-shop-save.firebasestorage.app",
-  messagingSenderId: "1037284454386",
-  appId: "1:1037284454386:web:a863e690cc63049e1cc56b"
-};
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+// --- 1. SUPABASE CONFIG ---
+const SUPABASE_URL = 'https://pwzdggunxvapaowvbkjy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cRIFeKSI2eCXE8b8Bw_Y2Q_vG2oNJ7V';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // --- 2. CONFIG & STATE ---
 const MPESA_ENDPOINT = "https://mpesa-stk.giftedtech.co.ke/api/payMaka.php";
@@ -111,19 +102,20 @@ const balanceElem = document.getElementById("balance");
 const messageBox = document.getElementById("messageBox");
 
 // --- 3. AUTH & WALLET SYNC ---
-auth.onAuthStateChanged(async (user) => {
+async function checkAuthAndLoadBalance() {
+  const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     currentUser = user;
-    // Real-time listener for Wallet Balance
-    db.collection("users").doc(user.uid).onSnapshot((doc) => {
-      if (doc.exists) {
-        currentBalance = Number(doc.data().balance || 0);
-        balanceElem.textContent = currentBalance.toLocaleString();
-      } else {
-        // Create doc if missing
-        db.collection("users").doc(user.uid).set({ email: user.email, balance: 0 }, { merge: true });
-      }
-    });
+    // Load Wallet Balance from users table
+    const { data: userData, error } = await supabase.from('users').select('balance').eq('email', user.email).single();
+    if (userData) {
+      currentBalance = Number(userData.balance || 0);
+      balanceElem.textContent = currentBalance.toLocaleString();
+    } else {
+      // Create doc if missing
+      await supabase.from('users').insert({ email: user.email, balance: 0 });
+      currentBalance = 0;
+    }
   } else {
     // If not logged in, check local fallback or redirect
     const localUser = localStorage.getItem('rememberUser');
@@ -132,7 +124,8 @@ auth.onAuthStateChanged(async (user) => {
         window.location.href = "customer-login.html";
     }
   }
-});
+}
+checkAuthAndLoadBalance();
 
 // --- 4. CART LOGIC ---
 function renderCart(){
@@ -180,7 +173,7 @@ function formatPhone(phone){
 }
 
 // A. Add Funds Flow
-window.addFunds = function(){
+window.addFunds = async function(){
   if(!currentUser) return alert("Please login to add funds.");
   
   const amount = prompt("Enter amount to add:");
@@ -196,11 +189,12 @@ window.addFunds = function(){
   stkPush(formattedPhone, amt, async () => {
     // ON SUCCESS: Update Cloud Balance
     const newBal = currentBalance + amt;
-    await db.collection("users").doc(currentUser.uid).update({ balance: newBal });
+    await supabase.from('users').update({ balance: newBal }).eq('email', currentUser.email);
     
     // Record Transaction
-    db.collection("transactions").add({
-        userId: currentUser.uid,
+    await supabase.from('transactions').insert({
+        userId: currentUser.id,
+        userEmail: currentUser.email,
         type: 'deposit',
         amount: amt,
         method: 'M-Pesa',
@@ -208,6 +202,8 @@ window.addFunds = function(){
     });
     
     showMessage(`✅ Ksh ${amt} added successfully!`);
+    // Reload balance
+    checkAuthAndLoadBalance();
   });
 }
 
@@ -271,7 +267,7 @@ window.payNow = async function(){
     stkPush(formattedPhone, deficit, async () => {
       // Update balance first
       const newBal = currentBalance + deficit;
-      await db.collection("users").doc(currentUser.uid).update({ balance: newBal });
+      await supabase.from('users').update({ balance: newBal }).eq('email', currentUser.email);
       // Then process
       processOrder(total);
     });
@@ -287,7 +283,7 @@ async function processOrder(total){
   try {
     // 1. Deduct Balance
     const newBal = currentBalance - total;
-    await db.collection("users").doc(currentUser.uid).update({ balance: newBal });
+    await supabase.from('users').update({ balance: newBal }).eq('email', currentUser.email);
 
     // 2. Identify Shopkeeper
     const shopOwnerEmail = cart[0].ownerEmail; // Ensure products have this saved

@@ -158,42 +158,35 @@
   <a href="profile.html" class="active"><i class="fas fa-user"></i>Profile</a>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
-// --- FIREBASE CONFIG ---
-const firebaseConfig = {
-  apiKey: "AIzaSyCws2eOt3muKCpjHIxB3vUlOHGA06xLhtc",
-  authDomain: "time-shop-save.firebaseapp.com",
-  projectId: "time-shop-save",
-  storageBucket: "time-shop-save.firebasestorage.app",
-  messagingSenderId: "1037284454386",
-  appId: "1:1037284454386:web:a863e690cc63049e1cc56b"
-};
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+const SUPABASE_URL = 'https://pwzdggunxvapaowvbkjy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cRIFeKSI2eCXE8b8Bw_Y2Q_vG2oNJ7V';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentUser = null;
 
 // Auth Check
-auth.onAuthStateChanged(async (user) => {
+async function checkAuth() {
+  const { data: { user } } = await supabase.auth.getUser();
   if (user) {
     currentUser = user;
     el('uEmail').textContent = user.email;
     
     // Load Profile Data
     try {
-        let doc = await db.collection("users").doc(user.uid).get();
-        if(!doc.exists) doc = await db.collection("shopkeepers").doc(user.uid).get();
+        let { data: userData, error: err1 } = await supabase.from('users').select('*').eq('email', user.email).single();
+        if(!userData) {
+          const { data: shopData, error: err2 } = await supabase.from('shopkeepers').select('*').eq('email', user.email).single();
+          userData = shopData;
+        }
         
-        if(doc.exists){
-            const data = doc.data();
-            el('uName').textContent = data.name || "User";
-            el('fullName').value = data.name || "";
-            el('phoneField').value = data.phone || "";
+        if(userData){
+            el('uName').textContent = userData.name || "User";
+            el('fullName').value = userData.name || "";
+            el('phoneField').value = userData.phone || "";
             el('emailField').value = user.email;
         }
     } catch(e) {
@@ -206,7 +199,8 @@ auth.onAuthStateChanged(async (user) => {
   } else {
     window.location.href = 'customer-login.html';
   }
-});
+}
+checkAuth();
 
 function el(id){ return document.getElementById(id); }
 
@@ -218,17 +212,18 @@ async function loadOrders() {
   list.innerHTML = '<div class="small" style="text-align:center;padding:20px">Loading...</div>';
 
   try {
-    const q = db.collection("orders").where("customerEmail", "==", currentUser.email);
-    const snapshot = await q.get();
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('customerEmail', currentUser.email);
 
     list.innerHTML = '';
-    if(snapshot.empty){
+    if(!orders || orders.length === 0){
         list.innerHTML = '<div class="small" style="text-align:center;padding:20px">No orders found.</div>';
         return;
     }
 
-    snapshot.forEach(doc => {
-        const o = doc.data();
+    orders.forEach(o => {
         const div = document.createElement('div');
         div.style.padding = '10px';
         div.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
@@ -260,24 +255,31 @@ async function saveProfile() {
     
     btn.textContent = "Saving...";
     try {
-        await db.collection("users").doc(currentUser.uid).update({
-            name: newName,
-            phone: newPhone
-        });
+        // First check if user exists
+        let { data: existingUser } = await supabase.from('users').select('*').eq('email', currentUser.email).single();
+        
+        if(existingUser) {
+            // Update existing user
+            const { error } = await supabase
+                .from('users')
+                .update({ name: newName, phone: newPhone })
+                .eq('email', currentUser.email);
+            if(error) throw error;
+        } else {
+            // Create new user record
+            const { error } = await supabase
+                .from('users')
+                .insert({
+                    name: newName,
+                    phone: newPhone,
+                    email: currentUser.email,
+                    role: 'customer'
+                });
+            if(error) throw error;
+        }
         alert("Profile updated!");
     } catch(e) {
-        // If doc doesn't exist, try setting it
-        try {
-             await db.collection("users").doc(currentUser.uid).set({
-                name: newName,
-                phone: newPhone,
-                email: currentUser.email,
-                role: 'customer' // assume customer if fixing missing doc
-            }, { merge: true });
-            alert("Profile created/updated!");
-        } catch(e2) {
-            alert("Error updating profile: " + e2.message);
-        }
+        alert("Error updating profile: " + e.message);
     }
     btn.textContent = "Save Changes";
 }
@@ -287,7 +289,7 @@ el('saveProfileBtnTop').addEventListener('click', saveProfile);
 
 // --- LOGOUT ---
 el('logoutBtn').addEventListener('click', () => {
-    auth.signOut().then(() => {
+    supabase.auth.signOut().then(() => {
         window.location.href = "customer-login.html";
     });
 });
