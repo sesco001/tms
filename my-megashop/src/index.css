@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #f8fafc;
+  color: #1e293b;
+  margin: 0;
+}
+
+#root {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border: none;
+  min-height: 100vh;
+}
+
+.card {
+  @apply bg-white rounded-xl shadow-sm border border-slate-100 p-6 transition-all hover:shadow-md;
+}
+
+.btn-primary {
+  @apply bg-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors w-full flex justify-center items-center gap-2;
+}
